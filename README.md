@@ -19,6 +19,7 @@ Maintenance Status: Stable
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 - [Installation](#installation)
+- [Stornaway Notes:](#stornaway-notes)
 - [Browser Support](#browser-support)
 - [Caveats](#caveats)
 - [Projection support](#projection-support)
@@ -64,6 +65,11 @@ Maintenance Status: Stable
 ```sh
 npm i videojs-vr
 ```
+## Stornaway Notes:
+1. Install with npm, not yarn, as yarn will not install all the dependencies correctly.
+2. Use examples/360.html to test the fully working webxr example.
+3. Use python3 -m http.server 8000 in the home to run a web server, then use ngrok to serve a secure page to the internet, as the webxr api requires a secure connection and won't respect mkcert certificates.
+4. Use the Immersive Web Emulator Chrome Extension to test the webxr api on desktop and to send the page to a headset
 
 ## Browser Support
 The most recent versions of:

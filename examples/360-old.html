@@ -14,26 +14,7 @@
       bottom: 20px;
       width: 100%;
       text-align: center;
-    }
-    #overlay-rectangle {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 200px;
-      height: 150px;
-      border: 5px solid white;
-      background-color: rgba(255, 255, 255, 0); /* Transparent background */
-      z-index: 10000; /* Ensure it appears on top of the canvas */
-      display: none; /* Initially hidden, we'll show it in WebXR mode */
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      position: absolute;
-      top: 0;
-      left: 0;
+      z-index: 999;
     }
   </style>
 </head>
@@ -45,9 +26,6 @@
 
   <!-- Container for the VR Button -->
   <div id="vr-button-container"></div>
-
-  <!-- Transparent rectangle with a white border for testing -->
-  <div id="overlay-rectangle"></div>
 
   <!-- Include video.js and videojs-vr -->
   <script src="../node_modules/video.js/dist/video.js"></script>
@@ -71,17 +49,6 @@
         webVREnabled: false
       });
 
-      const overlayRectangle = document.getElementById('overlay-rectangle');
-      const exitVrButton = document.getElementById('exit-vr-button');
-
-      // Ensure proper canvas resizing for VR mode
-      function resizeCanvasForXR(canvas) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-      }
-
       // Check if WebXR is supported and create the VR button
       function createVRButton() {
         if (navigator.xr) {
@@ -97,42 +64,25 @@
               vrButton.style.cursor = 'pointer';
 
               vrButton.onclick = function () {
-                // Start the WebXR session
+                // Attempt to start the WebXR session with 'local-floor' required
                 navigator.xr.requestSession('immersive-vr', {
-                  requiredFeatures: ['viewer'], // Use viewer space for broad compatibility
+                  requiredFeatures: ['local-floor'], // Request 'local-floor' explicitly
+                  optionalFeatures: ['viewer'] // 'viewer' is broadly supported
                 }).then((session) => {
-                  session.addEventListener('end', onSessionEnded);
-
-                  // Ensure the canvas is used by the WebXR session
-                  vr.renderer.xr.setSession(session);
-
-                  // Prepare the canvas and ensure proper fullscreen behavior
-                  const canvas = vr.renderer.domElement;
-                  resizeCanvasForXR(canvas);
-
-                  // Show the overlay rectangle during WebXR mode
-                  overlayRectangle.style.display = 'block';
-
-                  // Use reference space for VR rendering
-                  session.requestReferenceSpace('viewer').then((refSpace) => {
-                    vr.xrReferenceSpace = refSpace;
-
-                    // Start rendering the VR frame
-                    session.requestAnimationFrame(onXRFrame);
-
-                    // Trigger fullscreen mode
-                    document.body.requestFullscreen().catch(err => {
-                      console.warn("Fullscreen request failed:", err);
-                    });
-
-                    console.log("WebXR session started.");
+                  // Try to use 'local-floor', if it fails, fallback to 'viewer'
+                  session.requestReferenceSpace('local-floor').then((refSpace) => {
+                    onSessionStarted(session, refSpace); // Use 'local-floor' space
                   }).catch((err) => {
-                    console.warn("Error using viewer reference space.", err);
+                    console.warn('Fallback to viewer reference space.', err);
+                    session.requestReferenceSpace('viewer').then((viewerSpace) => {
+                      onSessionStarted(session, viewerSpace); // Use 'viewer' space as fallback
+                    });
                   });
                 }).catch((err) => {
                   console.error("Error starting WebXR session:", err);
                 });
               };
+
 
               document.getElementById('vr-button-container').appendChild(vrButton);
             } else {
@@ -144,24 +94,34 @@
         }
       }
 
-      // Handle the WebXR rendering loop
+      // Function to start the WebXR session and integrate it with the existing player
+      function onSessionStarted(session) {
+        session.addEventListener('end', onSessionEnded);
+
+        // Use videojs-vr built-in renderer logic
+        vr.renderer.xr.setSession(session);
+
+        // Directly use the viewer reference space for broader compatibility
+        session.requestReferenceSpace('viewer').then((refSpace) => {
+          session.requestAnimationFrame(onXRFrame);
+        });
+
+        console.log("WebXR session started.");
+      }
+
+      // Frame rendering loop
       function onXRFrame(time, frame) {
-        const session = frame.session;
-        session.requestAnimationFrame(onXRFrame); // Continue the rendering loop
-
-        // Render the scene using the VR renderer
-        vr.renderer.render(vr.scene, vr.camera);
+        let session = frame.session;
+        session.requestAnimationFrame(onXRFrame);
+        // Additional WebXR-specific rendering logic can go here
       }
 
-      // Handle WebXR session end
+      // Handle session end event
       function onSessionEnded() {
-        document.exitFullscreen();
         console.log("WebXR session ended.");
-        // Hide the overlay rectangle when exiting WebXR
-        overlayRectangle.style.display = 'none';
       }
 
-      // Create the VR button when the player is ready
+      // Create the VR button once the player is ready
       player.ready(function() {
         createVRButton();
       });

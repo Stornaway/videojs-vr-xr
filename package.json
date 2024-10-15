@@ -90,6 +90,7 @@
     "global": "^4.4.0",
     "three": "^0.149.0",
     "video.js": "^6 || ^7",
+    "videojs-vr": "^2.0.0",
     "webxr-polyfill": "^2.0.3"
   },
   "devDependencies": {
