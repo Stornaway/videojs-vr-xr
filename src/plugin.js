@@ -708,6 +708,16 @@ void main() {
     this.defaultProjection_ = projection;
   }
 
+  getThree() {
+    return {
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      renderedCanvas: this.renderedCanvas,
+      THREE
+    };
+  }
+
   isAndroidNativeCardboardSupport() {
     return (/android/i.test(window.navigator.userAgent));
   }
