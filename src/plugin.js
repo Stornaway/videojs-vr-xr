@@ -1254,6 +1254,24 @@ void main() {
 
   initImmersiveVR() {
     this.renderer.xr.enabled = true;
+
+    // ------------------------------------------------------------
+    // Forward WebXR session lifecycle to the host application
+    // ------------------------------------------------------------
+    // Three.js owns the XR session, but the host app needs to know
+    // when XR actually starts and ends so it can rebuild XR-aware
+    // renderers (e.g. external UI meshes).
+    if (!this._xrLifecycleForwarded) {
+      this.renderer.xr.addEventListener('sessionstart', () => {
+        this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-start', { bubbles: true }));
+      });
+
+      this.renderer.xr.addEventListener('sessionend', () => {
+        this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-end', { bubbles: true }));
+      });
+
+      this._xrLifecycleForwarded = true;
+    }
     this.renderer.xr.setReferenceSpaceType('local');
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setAnimationLoop(this.render.bind(this));
