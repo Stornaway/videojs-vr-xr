@@ -718,6 +718,14 @@ void main() {
     };
   }
 
+  getXR() {
+    return {
+      controllers: this.controllers,
+      raycaster: this.raycaster,
+      workingMatrix: this.workingMatrix
+    };
+  }
+
   isAndroidNativeCardboardSupport() {
     return (/android/i.test(window.navigator.userAgent));
   }
