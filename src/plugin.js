@@ -708,6 +708,7 @@ void main() {
     this.defaultProjection_ = projection;
   }
 
+  // Three.js related objects for external use
   getThree() {
     return {
       scene: this.scene,
@@ -718,12 +719,27 @@ void main() {
     };
   }
 
+  // XR related objects for external use
   getXR() {
     return {
       controllers: this.controllers,
       raycaster: this.raycaster,
       workingMatrix: this.workingMatrix
     };
+  }
+
+  // Meshes that will be tested for XR raycasting for external use
+  addXRRaycastTargets(meshes) {
+    if (!Array.isArray(meshes)) {
+      return;
+    }
+    this.xrRaycastTargets.push(...meshes);
+  }
+
+  clearXRRaycastTargets() {
+    if (this.xrRaycastTargets) {
+      this.xrRaycastTargets.length = 0;
+    }
   }
 
   isAndroidNativeCardboardSupport() {
@@ -1105,6 +1121,7 @@ void main() {
     this.buttonExit.position.x = -0.8;
     this.buttonExit.position.z = 0.1;
     this.buttonExit.buttonid = 'exit';
+    this.buttonExit.userData.__vrInternal = true;
     this.controls.add(this.buttonExit);
 
     // Rewind 10 secs
@@ -1115,6 +1132,7 @@ void main() {
     this.buttonBack10.position.x = -0.1;
     this.buttonBack10.position.z = 0.1;
     this.buttonBack10.buttonid = 'back10';
+    this.buttonBack10.userData.__vrInternal = true;
     this.controls.add(this.buttonBack10);
 
     // Play/Pause toggle
@@ -1125,6 +1143,7 @@ void main() {
     this.buttonPlayPause.position.x = 0.4;
     this.buttonPlayPause.position.z = 0.1;
     this.buttonPlayPause.buttonid = 'playpause';
+    this.buttonPlayPause.userData.__vrInternal = true;
     this.controls.add(this.buttonPlayPause);
 
     // Forward 10 secs
@@ -1135,6 +1154,7 @@ void main() {
     this.buttonForward10.position.x = 0.9;
     this.buttonForward10.position.z = 0.1;
     this.buttonForward10.buttonid = 'forward10';
+    this.buttonForward10.userData.__vrInternal = true;
     this.controls.add(this.buttonForward10);
 
     this.highlight = new THREE.Mesh(buttonGeometry, new THREE.MeshBasicMaterial({
@@ -1152,13 +1172,50 @@ void main() {
       this.workingMatrix.identity().extractRotation(controller.matrixWorld);
       this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
       this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.workingMatrix);
-      const rayTargets = this.raycaster.intersectObjects(this.holodeck.children);
+      // Raytargets in original plugin are all the children of the holodeck, and here we add additional targets
+      const rayTargets = this.raycaster.intersectObjects(
+        [...this.holodeck.children, ...(this.xrRaycastTargets || [])],
+        true
+      );
 
       if (rayTargets.length > 0) {
-        rayTargets[0].object.add(this.highlight);
-        this.highlight.visible = true;
+        const hit = rayTargets[0].object;
+
+        // Check if the hit object is an internal vr control
+        if (hit.userData && hit.userData.__vrInternal) {
+          hit.add(this.highlight);
+          this.highlight.visible = true;
+        }
+
         if (controller.userData.selectPressed) {
-          switch (rayTargets[0].object.buttonid) {
+
+          // ------------------------------------------------------------
+          // Allow external interactive targets
+          //
+          // If a hit object defines `userData.choice`, it represents an
+          // application-defined interactive element rendered into the
+          // XR scene. Forward the interaction as a DOM CustomEvent and
+          // exit early so built-in holodeck controls are not triggered.
+          // ------------------------------------------------------------
+          // External interactive target selected.
+          // Emit a generic XR selection event and let the host app decide what it means.
+          if (!hit.userData || !hit.userData.__vrInternal) {
+            this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-xr-select', {
+              bubbles: true,
+              detail: {
+                object: hit,
+                controller
+              }
+            }));
+
+            controller.userData.selectPressed = false;
+            return;
+          }
+
+          // ------------------------------------------------------------
+          // Built-in videojs-vr holodeck controls
+          // ------------------------------------------------------------
+          switch (hit.buttonid) {
           case 'playpause':
             this.togglePlay_();
             break;
@@ -1183,12 +1240,15 @@ void main() {
             }
             break;
           }
+
           controller.userData.selectPressed = false;
         }
+
         controller.children[0].scale.z = rayTargets[0].distance;
       } else {
         this.highlight.visible = false;
       }
+
     }
   }
 
@@ -1199,6 +1259,7 @@ void main() {
     this.renderer.setAnimationLoop(this.render.bind(this));
 
     this.raycaster = new THREE.Raycaster();
+    this.xrRaycastTargets = [];
     this.workingMatrix = new THREE.Matrix4();
     this.workingVector = new THREE.Vector3();
 
