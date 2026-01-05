@@ -1190,12 +1190,12 @@ void main() {
         if (controller.userData.selectPressed) {
 
           // ------------------------------------------------------------
-          // Allow external interactive targets
+          // Allow external interactive targets.
           //
-          // If a hit object defines `userData.choice`, it represents an
-          // application-defined interactive element rendered into the
-          // XR scene. Forward the interaction as a DOM CustomEvent and
-          // exit early so built-in holodeck controls are not triggered.
+          // Any hit object that is not marked as an internal videojs-vr
+          // control is treated as an application-defined interactive
+          // element. Forward the interaction and exit early so built-in
+          // holodeck controls are not triggered.
           // ------------------------------------------------------------
           // External interactive target selected.
           // Emit a generic XR selection event and let the host app decide what it means.
