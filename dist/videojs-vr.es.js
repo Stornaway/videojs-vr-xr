@@ -41632,8 +41632,16 @@ class VRButton {
       }
       function _onSessionStarted() {
         _onSessionStarted = _asyncToGenerator(function* (session) {
+          console.log('VRButton: onSessionStarted', session);
           session.addEventListener('end', onSessionEnded);
           yield renderer.xr.setSession(session);
+          console.log('VRButton: renderer.xr.setSession complete');
+          window.dispatchEvent(new CustomEvent('videojs-vr-session-start', {
+            detail: {
+              session
+            }
+          }));
+          console.log('[VRButton] videojs-vr-session-start dispatched');
           button.textContent = 'EXIT VR';
           currentSession = session;
         });
@@ -41642,6 +41650,9 @@ class VRButton {
       function onSessionEnded(/*event*/
       ) {
         currentSession.removeEventListener('end', onSessionEnded);
+        console.log('VRButton: onSessionEnded');
+        window.dispatchEvent(new CustomEvent('videojs-vr-session-end'));
+        console.log('[VRButton] videojs-vr-session-end dispatched');
         button.textContent = 'RE-ENTER VR';
         currentSession = null;
       }
@@ -41671,6 +41682,7 @@ class VRButton {
         button.style.opacity = '0.5';
       };
       button.onclick = function () {
+        console.log('VRButton: button clicked');
         if (currentSession === null) {
           navigator.xr.requestSession('immersive-vr', sessionOptions).then(onSessionStarted);
         } else {
@@ -45084,17 +45096,35 @@ class BoxLineGeometry extends BufferGeometry {
 }
 
 const BigPlayButton = videojs.getComponent('BigPlayButton');
+
+/**
+ * Big VR play button for entering immersive WebXR mode.
+ */
 class BigVrPlayButton extends BigPlayButton {
   buildCSSClass() {
     return `vjs-big-vr-play-button ${super.buildCSSClass()}`;
   }
+
+  /**
+   * Called when an immersive XR session has started.
+   *
+   * @param {XRSession} session
+   */
   onSessionStarted(session) {
     return _asyncToGenerator(function* () {
+      videojs.log('[big-vr-play-button] onSessionStarted', session);
       yield window$1.navigator.xr.setSession(session);
+      videojs.log('[big-vr-play-button] navigator.xr.setSession complete');
+      window$1.dispatchEvent(new CustomEvent('videojs-vr-session-start', {
+        detail: {
+          session
+        }
+      }));
+      videojs.log('[big-vr-play-button] videojs-vr-session-start dispatched');
     })();
   }
   handleClick(event) {
-    // For iOS we need permission for the device orientation data, this will pop up an 'Allow' if not already set
+    // For iOS we need permission for the device orientation data
     // eslint-disable-next-line
     if (typeof window$1.DeviceMotionEvent === 'function' && typeof window$1.DeviceMotionEvent.requestPermission === 'function') {
       window$1.DeviceMotionEvent.requestPermission().then(response => {
@@ -45107,9 +45137,11 @@ class BigVrPlayButton extends BigPlayButton {
       const sessionInit = {
         optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
       };
-      const self = this;
-      window$1.navigator.xr.requestSession('immersive-vr', sessionInit).then(self.onSessionStarted).catch(_ => {
-        // immersive-vr not supported
+      videojs.log('Requesting immersive-vr session');
+      window$1.navigator.xr.requestSession('immersive-vr', sessionInit).then(session => {
+        this.onSessionStarted(session);
+      }).catch(() => {
+        videojs.log('immersive-vr session request denied');
       });
     }
     super.handleClick(event);
@@ -45725,6 +45757,8 @@ void main() {
     this.currentProjection_ = projection;
     this.defaultProjection_ = projection;
   }
+
+  // Three.js related objects for external use
   getThree() {
     return {
       scene: this.scene,
@@ -45733,6 +45767,28 @@ void main() {
       renderedCanvas: this.renderedCanvas,
       THREE
     };
+  }
+
+  // XR related objects for external use
+  getXR() {
+    return {
+      controllers: this.controllers,
+      raycaster: this.raycaster,
+      workingMatrix: this.workingMatrix
+    };
+  }
+
+  // Meshes that will be tested for XR raycasting for external use
+  addXRRaycastTargets(meshes) {
+    if (!Array.isArray(meshes)) {
+      return;
+    }
+    this.xrRaycastTargets.push(...meshes);
+  }
+  clearXRRaycastTargets() {
+    if (this.xrRaycastTargets) {
+      this.xrRaycastTargets.length = 0;
+    }
   }
   isAndroidNativeCardboardSupport() {
     return /android/i.test(window$1.navigator.userAgent);
@@ -46052,6 +46108,7 @@ void main() {
     this.buttonExit.position.x = -0.8;
     this.buttonExit.position.z = 0.1;
     this.buttonExit.buttonid = 'exit';
+    this.buttonExit.userData.__vrInternal = true;
     this.controls.add(this.buttonExit);
 
     // Rewind 10 secs
@@ -46065,6 +46122,7 @@ void main() {
     this.buttonBack10.position.x = -0.1;
     this.buttonBack10.position.z = 0.1;
     this.buttonBack10.buttonid = 'back10';
+    this.buttonBack10.userData.__vrInternal = true;
     this.controls.add(this.buttonBack10);
 
     // Play/Pause toggle
@@ -46078,6 +46136,7 @@ void main() {
     this.buttonPlayPause.position.x = 0.4;
     this.buttonPlayPause.position.z = 0.1;
     this.buttonPlayPause.buttonid = 'playpause';
+    this.buttonPlayPause.userData.__vrInternal = true;
     this.controls.add(this.buttonPlayPause);
 
     // Forward 10 secs
@@ -46091,6 +46150,7 @@ void main() {
     this.buttonForward10.position.x = 0.9;
     this.buttonForward10.position.z = 0.1;
     this.buttonForward10.buttonid = 'forward10';
+    this.buttonForward10.userData.__vrInternal = true;
     this.controls.add(this.buttonForward10);
     this.highlight = new Mesh(buttonGeometry, new MeshBasicMaterial({
       color: 0xffffff,
@@ -46106,12 +46166,43 @@ void main() {
       this.workingMatrix.identity().extractRotation(controller.matrixWorld);
       this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
       this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.workingMatrix);
-      const rayTargets = this.raycaster.intersectObjects(this.holodeck.children);
+      // Raytargets in original plugin are all the children of the holodeck, and here we add additional targets
+      const rayTargets = this.raycaster.intersectObjects([...this.holodeck.children, ...(this.xrRaycastTargets || [])], true);
       if (rayTargets.length > 0) {
-        rayTargets[0].object.add(this.highlight);
-        this.highlight.visible = true;
+        const hit = rayTargets[0].object;
+
+        // Check if the hit object is an internal vr control
+        if (hit.userData && hit.userData.__vrInternal) {
+          hit.add(this.highlight);
+          this.highlight.visible = true;
+        }
         if (controller.userData.selectPressed) {
-          switch (rayTargets[0].object.buttonid) {
+          // ------------------------------------------------------------
+          // Allow external interactive targets.
+          //
+          // Any hit object that is not marked as an internal videojs-vr
+          // control is treated as an application-defined interactive
+          // element. Forward the interaction and exit early so built-in
+          // holodeck controls are not triggered.
+          // ------------------------------------------------------------
+          // External interactive target selected.
+          // Emit a generic XR selection event and let the host app decide what it means.
+          if (!hit.userData || !hit.userData.__vrInternal) {
+            this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-xr-select', {
+              bubbles: true,
+              detail: {
+                object: hit,
+                controller
+              }
+            }));
+            controller.userData.selectPressed = false;
+            return;
+          }
+
+          // ------------------------------------------------------------
+          // Built-in videojs-vr holodeck controls
+          // ------------------------------------------------------------
+          switch (hit.buttonid) {
             case 'playpause':
               this.togglePlay_();
               break;
@@ -46142,10 +46233,31 @@ void main() {
   }
   initImmersiveVR() {
     this.renderer.xr.enabled = true;
+
+    // ------------------------------------------------------------
+    // Forward WebXR session lifecycle to the host application
+    // ------------------------------------------------------------
+    // Three.js owns the XR session, but the host app needs to know
+    // when XR actually starts and ends so it can rebuild XR-aware
+    // renderers (e.g. external UI meshes).
+    if (!this._xrLifecycleForwarded) {
+      this.renderer.xr.addEventListener('sessionstart', () => {
+        this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-start', {
+          bubbles: true
+        }));
+      });
+      this.renderer.xr.addEventListener('sessionend', () => {
+        this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-end', {
+          bubbles: true
+        }));
+      });
+      this._xrLifecycleForwarded = true;
+    }
     this.renderer.xr.setReferenceSpaceType('local');
     this.renderer.setPixelRatio(window$1.devicePixelRatio);
     this.renderer.setAnimationLoop(this.render.bind(this));
     this.raycaster = new Raycaster();
+    this.xrRaycastTargets = [];
     this.workingMatrix = new Matrix4();
     this.workingVector = new Vector3();
     this.initShuttleControls();
