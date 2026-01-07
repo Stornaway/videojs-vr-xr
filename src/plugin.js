@@ -1221,10 +1221,13 @@ void main() {
           // Emit a generic XR selection event and let the host app decide what it means.
           if (!hit.userData || !hit.userData.__vrInternal) {
             this.highlight.visible = false;
+
             this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-xr-select', {
               bubbles: true,
               detail: {
-                object: hit,
+                hit: {
+                  object: hit
+                },
                 controller
               }
             }));
