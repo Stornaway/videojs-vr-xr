@@ -53481,7 +53481,9 @@ void main() {
 	            this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-xr-select', {
 	              bubbles: true,
 	              detail: {
-	                object: hit,
+	                hit: {
+	                  object: hit
+	                },
 	                controller
 	              }
 	            }));
