@@ -46177,7 +46177,7 @@ void main() {
       this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
       this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.workingMatrix);
       // Raytargets in original plugin are all the children of the holodeck, and here we add additional targets
-      const rayTargets = this.raycaster.intersectObjects([...this.holodeck.children, ...(this.xrRaycastTargets || [])], true);
+      const rayTargets = this.raycaster.intersectObjects([...(this.xrRaycastTargets || []), ...this.holodeck.children], true);
       if (rayTargets.length > 0) {
         const hit = rayTargets[0].object;
 

@@ -65162,7 +65162,7 @@ host this content on a secure origin for the best user experience.
 
 	function cov_suydfs59c() {
 	  var path = "/Users/ru/Documents/GitHub/videojs-vr-xr/src/plugin.js";
-	  var hash = "d493f7c0389601222e66449ffa3519b55613ef48";
+	  var hash = "4999507b3e8b296261fdd16b5d983b75f1d67e95";
 	  var global = new Function("return this")();
 	  var gcv = "__coverage__";
 	  var coverageData = {
@@ -76516,31 +76516,31 @@ host this content on a secure origin for the best user experience.
 	        loc: {
 	          start: {
 	            line: 1177,
-	            column: 40
+	            column: 13
 	          },
 	          end: {
 	            line: 1177,
-	            column: 67
+	            column: 40
 	          }
 	        },
 	        type: "binary-expr",
 	        locations: [{
 	          start: {
 	            line: 1177,
-	            column: 40
+	            column: 13
 	          },
 	          end: {
 	            line: 1177,
-	            column: 61
+	            column: 34
 	          }
 	        }, {
 	          start: {
 	            line: 1177,
-	            column: 65
+	            column: 38
 	          },
 	          end: {
 	            line: 1177,
-	            column: 67
+	            column: 40
 	          }
 	        }],
 	        line: 1177
@@ -78343,7 +78343,7 @@ host this content on a secure origin for the best user experience.
 	      "118": [0, 0]
 	    },
 	    _coverageSchema: "1a1c01bbd47fc00a2c39e90264f33305004495a9",
-	    hash: "d493f7c0389601222e66449ffa3519b55613ef48"
+	    hash: "4999507b3e8b296261fdd16b5d983b75f1d67e95"
 	  };
 	  var coverage = global[gcv] || (global[gcv] = {});
 	  if (!coverage[path] || coverage[path].hash !== hash) {
@@ -79997,7 +79997,7 @@ void main() {
 	      this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
 	      cov_suydfs59c().s[568]++;
 	      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.workingMatrix); // Raytargets in original plugin are all the children of the holodeck, and here we add additional targets
-	      const rayTargets = (cov_suydfs59c().s[569]++, this.raycaster.intersectObjects([...this.holodeck.children, ...((cov_suydfs59c().b[91][0]++, this.xrRaycastTargets) || (cov_suydfs59c().b[91][1]++, []))], true));
+	      const rayTargets = (cov_suydfs59c().s[569]++, this.raycaster.intersectObjects([...((cov_suydfs59c().b[91][0]++, this.xrRaycastTargets) || (cov_suydfs59c().b[91][1]++, [])), ...this.holodeck.children], true));
 	      cov_suydfs59c().s[570]++;
 	      if (rayTargets.length > 0) {
 	        cov_suydfs59c().b[92][0]++;
