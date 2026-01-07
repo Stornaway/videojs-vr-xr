@@ -46169,7 +46169,25 @@ void main() {
       // Raytargets in original plugin are all the children of the holodeck, and here we add additional targets
       const rayTargets = this.raycaster.intersectObjects([...(this.xrRaycastTargets || []), ...this.holodeck.children], true);
       if (rayTargets.length > 0) {
-        const hit = rayTargets[0].object;
+        let hitObject = null;
+        let hitDistance = null;
+
+        // First prefer any external app hit
+        for (let i = 0; i < rayTargets.length; i++) {
+          const obj = rayTargets[i].object;
+          if (!obj.userData || obj.userData.__vrInternal !== true) {
+            hitObject = obj;
+            hitDistance = rayTargets[i].distance;
+            break;
+          }
+        }
+
+        // Fallback to nearest hit (holodeck)
+        if (!hitObject) {
+          hitObject = rayTargets[0].object;
+          hitDistance = rayTargets[0].distance;
+        }
+        const hit = hitObject;
 
         // Check if the hit object is an internal vr control
         if (hit.userData && hit.userData.__vrInternal) {
@@ -46188,6 +46206,7 @@ void main() {
           // External interactive target selected.
           // Emit a generic XR selection event and let the host app decide what it means.
           if (!hit.userData || !hit.userData.__vrInternal) {
+            this.highlight.visible = false;
             this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-xr-select', {
               bubbles: true,
               detail: {
@@ -46225,7 +46244,7 @@ void main() {
           }
           controller.userData.selectPressed = false;
         }
-        controller.children[0].scale.z = rayTargets[0].distance;
+        controller.children[0].scale.z = hitDistance;
       } else {
         this.highlight.visible = false;
       }
