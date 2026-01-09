@@ -10,20 +10,9 @@ class VRButton {
 
       async function onSessionStarted( session ) {
 
-        console.log('VRButton: onSessionStarted', session);
-
         session.addEventListener( 'end', onSessionEnded );
 
         await renderer.xr.setSession( session );
-
-        console.log('VRButton: renderer.xr.setSession complete');
-
-        window.dispatchEvent(
-          new CustomEvent('videojs-vr-session-start', { detail: { session } })
-        );
-
-        console.log('[VRButton] videojs-vr-session-start dispatched');
-
         button.textContent = 'EXIT VR';
 
         currentSession = session;
@@ -33,14 +22,6 @@ class VRButton {
       function onSessionEnded( /*event*/ ) {
 
         currentSession.removeEventListener( 'end', onSessionEnded );
-
-        console.log('VRButton: onSessionEnded');
-
-        window.dispatchEvent(
-          new CustomEvent('videojs-vr-session-end')
-        );
-
-        console.log('[VRButton] videojs-vr-session-end dispatched');
 
         button.textContent = 'RE-ENTER VR';
 
@@ -88,8 +69,6 @@ class VRButton {
       };
 
       button.onclick = function () {
-
-        console.log('VRButton: button clicked');
 
         if ( currentSession === null ) {
 
