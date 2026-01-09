@@ -41632,16 +41632,8 @@ class VRButton {
       }
       function _onSessionStarted() {
         _onSessionStarted = _asyncToGenerator(function* (session) {
-          console.log('VRButton: onSessionStarted', session);
           session.addEventListener('end', onSessionEnded);
           yield renderer.xr.setSession(session);
-          console.log('VRButton: renderer.xr.setSession complete');
-          window.dispatchEvent(new CustomEvent('videojs-vr-session-start', {
-            detail: {
-              session
-            }
-          }));
-          console.log('[VRButton] videojs-vr-session-start dispatched');
           button.textContent = 'EXIT VR';
           currentSession = session;
         });
@@ -41650,9 +41642,6 @@ class VRButton {
       function onSessionEnded(/*event*/
       ) {
         currentSession.removeEventListener('end', onSessionEnded);
-        console.log('VRButton: onSessionEnded');
-        window.dispatchEvent(new CustomEvent('videojs-vr-session-end'));
-        console.log('[VRButton] videojs-vr-session-end dispatched');
         button.textContent = 'RE-ENTER VR';
         currentSession = null;
       }
@@ -41682,7 +41671,6 @@ class VRButton {
         button.style.opacity = '0.5';
       };
       button.onclick = function () {
-        console.log('VRButton: button clicked');
         if (currentSession === null) {
           navigator.xr.requestSession('immersive-vr', sessionOptions).then(onSessionStarted);
         } else {
@@ -45096,35 +45084,17 @@ class BoxLineGeometry extends BufferGeometry {
 }
 
 const BigPlayButton = videojs.getComponent('BigPlayButton');
-
-/**
- * Big VR play button for entering immersive WebXR mode.
- */
 class BigVrPlayButton extends BigPlayButton {
   buildCSSClass() {
     return `vjs-big-vr-play-button ${super.buildCSSClass()}`;
   }
-
-  /**
-   * Called when an immersive XR session has started.
-   *
-   * @param {XRSession} session
-   */
   onSessionStarted(session) {
     return _asyncToGenerator(function* () {
-      videojs.log('[big-vr-play-button] onSessionStarted', session);
       yield window$1.navigator.xr.setSession(session);
-      videojs.log('[big-vr-play-button] navigator.xr.setSession complete');
-      window$1.dispatchEvent(new CustomEvent('videojs-vr-session-start', {
-        detail: {
-          session
-        }
-      }));
-      videojs.log('[big-vr-play-button] videojs-vr-session-start dispatched');
     })();
   }
   handleClick(event) {
-    // For iOS we need permission for the device orientation data
+    // For iOS we need permission for the device orientation data, this will pop up an 'Allow' if not already set
     // eslint-disable-next-line
     if (typeof window$1.DeviceMotionEvent === 'function' && typeof window$1.DeviceMotionEvent.requestPermission === 'function') {
       window$1.DeviceMotionEvent.requestPermission().then(response => {
@@ -45137,17 +45107,34 @@ class BigVrPlayButton extends BigPlayButton {
       const sessionInit = {
         optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
       };
-      videojs.log('Requesting immersive-vr session');
-      window$1.navigator.xr.requestSession('immersive-vr', sessionInit).then(session => {
-        this.onSessionStarted(session);
-      }).catch(() => {
-        videojs.log('immersive-vr session request denied');
+      const self = this;
+      window$1.navigator.xr.requestSession('immersive-vr', sessionInit).then(self.onSessionStarted).catch(_ => {
+        // immersive-vr not supported
       });
     }
     super.handleClick(event);
   }
 }
 videojs.registerComponent('BigVrPlayButton', BigVrPlayButton);
+
+/**
+ * ==========================================================
+ * SWY CUSTOM MODIFICATIONS
+ * ==========================================================
+ *
+ * This file contains intentional deviations from the upstream
+ * videojs-vr plugin to support multi-player WebXR usage.
+ *
+ * These changes are labeled: SWY CUSTOM
+ *
+ * These changes should not be removed without understanding
+ * the host application’s XR architecture.
+ *
+ * Core architectural change:
+ * XR presentation is decoupled from video source ownership.
+ * The WebXR renderer remains stable while video sources,
+ * controls, and interactive targets are dynamically retargeted.
+ */
 
 // Default options for the plugin.
 const defaults = {
@@ -45653,18 +45640,58 @@ void main() {
     }
     return this.player_.cancelAnimationFrame(id);
   }
+
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — XR action routing
+   * ----------------------------------------------------------
+   * Reason:
+   * In a multi-player environment, the player that owns the XR
+   * renderer may not be the logical "current" player.
+   *
+   * Context:
+   * Holodeck UI actions (play/pause/seek) must always act on
+   * the application’s current player, not necessarily the
+   * player that instantiated this plugin.
+   *
+   * Behaviour change:
+   * XR UI actions are resolved dynamically at interaction time,
+   * allowing control to follow the active player across swaps.
+   */
+
+  // Get the player that holodeck actions should be sent to
+  getActionPlayer_() {
+    if (typeof this._actionPlayerResolver === 'function') {
+      return this._actionPlayerResolver();
+    }
+    return this._actionPlayer || this.player_;
+  }
+
+  // Set the player that holodeck actions should be sent to
+  setActionPlayer(targetOrResolver) {
+    if (typeof targetOrResolver === 'function') {
+      this._actionPlayerResolver = targetOrResolver;
+      this._actionPlayer = null;
+      return;
+    }
+    this._actionPlayer = targetOrResolver || null;
+    this._actionPlayerResolver = null;
+  }
   togglePlay_() {
-    if (this.player_.paused()) {
-      this.player_.play();
+    const p = this.getActionPlayer_();
+    if (p.paused()) {
+      p.play();
     } else {
-      this.player_.pause();
+      p.pause();
     }
   }
   seekBack10_() {
-    this.player_.currentTime(this.player_.currentTime() - 10);
+    const p = this.getActionPlayer_();
+    p.currentTime(p.currentTime() - 10);
   }
   seekForward10_() {
-    this.player_.currentTime(this.player_.currentTime() + 10);
+    const p = this.getActionPlayer_();
+    p.currentTime(p.currentTime() + 10);
   }
   animate_() {
     if (!this.initialized_) {
@@ -45758,7 +45785,23 @@ void main() {
     this.defaultProjection_ = projection;
   }
 
-  // Three.js related objects for external use
+  /*
+  * ----------------------------------------------------------
+  * SWY CUSTOM — expose Three.js and XR objects
+  * ----------------------------------------------------------
+  * Reason:
+  * In a shared XR scene, external systems may need access
+  * to the underlying Three.js and WebXR objects.
+  *
+  * Context:
+  * Holodeck’s shared XR scene requires access to the
+  * Three.js scene, camera, renderer, and canvas, as well
+  * as the XR controllers and raycaster.
+  *
+  * Behaviour change:
+  * Provides getter methods to retrieve the relevant
+  * Three.js and WebXR objects.
+  */
   getThree() {
     return {
       scene: this.scene,
@@ -45778,12 +45821,67 @@ void main() {
     };
   }
 
-  // Meshes that will be tested for XR raycasting for external use
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — dynamic XR video source
+   * ----------------------------------------------------------
+   * Reason:
+   * In immersive WebXR, the presenting Three.js renderer must
+   * remain active even when the underlying video source changes.
+   *
+   * Context:
+   * The host application swaps between multiple video.js players
+   * to preload and transition media. XR presentation cannot be
+   * transferred between renderers, so the video texture must be
+   * retargeted instead.
+   *
+   * Behaviour change:
+   * Allows the existing THREE.VideoTexture to reference a
+   * different <video> element at runtime without restarting
+   * the XR session or rebuilding the scene.
+   */
+  setVideoElement(videoEl) {
+    if (!videoEl || !this.videoTexture) {
+      return;
+    }
+    this.videoTexture.image = videoEl;
+    this.videoTexture.needsUpdate = true;
+  }
+
+  /**
+  * ----------------------------------------------------------
+  * SWY CUSTOM — XR raycast target management
+  * ----------------------------------------------------------
+  * Reason:
+  * The upstream plugin assumes it owns all XR raycast targets
+  * and can safely clear them globally.
+  *
+  * Context:
+  * In a shared XR scene, external systems may register their
+  * own XR-interactive meshes. Clearing all targets would
+  * incorrectly remove unrelated XR UI.
+  *
+  * Behaviour change:
+  * Specific XR raycast targets can now be removed without
+  * destroying the entire target set.
+  */
+
   addXRRaycastTargets(meshes) {
     if (!Array.isArray(meshes)) {
       return;
     }
     this.xrRaycastTargets.push(...meshes);
+  }
+  removeXRRaycastTargets(meshes) {
+    if (!Array.isArray(meshes) || !this.xrRaycastTargets) {
+      return;
+    }
+    const remove = new Set(meshes);
+    for (let i = this.xrRaycastTargets.length - 1; i >= 0; i--) {
+      if (remove.has(this.xrRaycastTargets[i])) {
+        this.xrRaycastTargets.splice(i, 1);
+      }
+    }
   }
   clearXRRaycastTargets() {
     if (this.xrRaycastTargets) {
@@ -46108,6 +46206,7 @@ void main() {
     this.buttonExit.position.x = -0.8;
     this.buttonExit.position.z = 0.1;
     this.buttonExit.buttonid = 'exit';
+    // SWY CUSTOM — Mark as internal VR control
     this.buttonExit.userData.__vrInternal = true;
     this.controls.add(this.buttonExit);
 
@@ -46122,6 +46221,7 @@ void main() {
     this.buttonBack10.position.x = -0.1;
     this.buttonBack10.position.z = 0.1;
     this.buttonBack10.buttonid = 'back10';
+    // SWY CUSTOM — Mark as internal VR control
     this.buttonBack10.userData.__vrInternal = true;
     this.controls.add(this.buttonBack10);
 
@@ -46136,6 +46236,7 @@ void main() {
     this.buttonPlayPause.position.x = 0.4;
     this.buttonPlayPause.position.z = 0.1;
     this.buttonPlayPause.buttonid = 'playpause';
+    // SWY CUSTOM — Mark as internal VR control
     this.buttonPlayPause.userData.__vrInternal = true;
     this.controls.add(this.buttonPlayPause);
 
@@ -46150,6 +46251,7 @@ void main() {
     this.buttonForward10.position.x = 0.9;
     this.buttonForward10.position.z = 0.1;
     this.buttonForward10.buttonid = 'forward10';
+    // SWY CUSTOM — Mark as internal VR control
     this.buttonForward10.userData.__vrInternal = true;
     this.controls.add(this.buttonForward10);
     this.highlight = new Mesh(buttonGeometry, new MeshBasicMaterial({
@@ -46160,6 +46262,25 @@ void main() {
     this.highlight.visible = false;
     this.scene.add(this.highlight);
   }
+
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — XR raycast priority inside renderController
+   * ----------------------------------------------------------
+   * Reason:
+   * The upstream plugin assumes the holodeck UI is the only
+   * interactive surface in XR and always prioritises it.
+   *
+   * Context:
+   * The host application injects additional world-space XR UI
+   * (e.g. 360 choice buttons) that must receive controller
+   * interaction before built-in holodeck controls.
+   *
+   * Behaviour change:
+   * Raycasting now prefers non-internal XR targets first and
+   * falls back to holodeck controls only if no external hit
+   * is found.
+   */
   renderController(controller) {
     if (controller.userData.selectPressed) {
       controller.children[0].scale.z = 10;
@@ -46252,15 +46373,29 @@ void main() {
       }
     }
   }
+
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — WebXR session lifecycle forwarding
+   * ----------------------------------------------------------
+   * Reason:
+   * WebXR session ownership lives on the Three.js renderer, not
+   * on any specific UI control or video.js player instance.
+   *
+   * Context:
+   * XR may be entered via browser UI (e.g. Quest “Enter VR”),
+   * programmatic calls, or plugin controls. The host application
+   * must be notified when immersive XR presentation actually
+   * begins and ends so it can coordinate XR-aware systems.
+   *
+   * Behaviour change:
+   * The renderer-level XR session lifecycle is forwarded to the
+   * host application via explicit start/end events. This does
+   * not alter XR behaviour; it only exposes authoritative XR
+   * state.
+   */
   initImmersiveVR() {
     this.renderer.xr.enabled = true;
-
-    // ------------------------------------------------------------
-    // Forward WebXR session lifecycle to the host application
-    // ------------------------------------------------------------
-    // Three.js owns the XR session, but the host app needs to know
-    // when XR actually starts and ends so it can rebuild XR-aware
-    // renderers (e.g. external UI meshes).
     if (!this._xrLifecycleForwarded) {
       this.renderer.xr.addEventListener('sessionstart', () => {
         this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-start', {
