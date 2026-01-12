@@ -1,3 +1,22 @@
+/**
+ * ==========================================================
+ * SWY CUSTOM MODIFICATIONS
+ * ==========================================================
+ *
+ * This file contains intentional deviations from the upstream
+ * videojs-vr plugin to support multi-player WebXR usage.
+ *
+ * These changes are labeled: SWY CUSTOM
+ *
+ * These changes should not be removed without understanding
+ * the host application’s XR architecture.
+ *
+ * Core architectural change:
+ * XR presentation is decoupled from video source ownership.
+ * The WebXR renderer remains stable while video sources,
+ * controls, and interactive targets are dynamically retargeted.
+ */
+
 import 'babel-polyfill';
 import {version as VERSION} from '../package.json';
 import window from 'global/window';
@@ -588,20 +607,63 @@ void main() {
     return this.player_.cancelAnimationFrame(id);
   }
 
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — XR action routing
+   * ----------------------------------------------------------
+   * Reason:
+   * In a multi-player environment, the player that owns the XR
+   * renderer may not be the logical "current" player.
+   *
+   * Context:
+   * Holodeck UI actions (play/pause/seek) must always act on
+   * the application’s current player, not necessarily the
+   * player that instantiated this plugin.
+   *
+   * Behaviour change:
+   * XR UI actions are resolved dynamically at interaction time,
+   * allowing control to follow the active player across swaps.
+   */
+
+  // Get the player that holodeck actions should be sent to
+  getActionPlayer_() {
+    if (typeof this._actionPlayerResolver === 'function') {
+      return this._actionPlayerResolver();
+    }
+    return this._actionPlayer || this.player_;
+  }
+
+  // Set the player that holodeck actions should be sent to
+  setActionPlayer(targetOrResolver) {
+    if (typeof targetOrResolver === 'function') {
+      this._actionPlayerResolver = targetOrResolver;
+      this._actionPlayer = null;
+      return;
+    }
+    this._actionPlayer = targetOrResolver || null;
+    this._actionPlayerResolver = null;
+  }
+
   togglePlay_() {
-    if (this.player_.paused()) {
-      this.player_.play();
+    const p = this.getActionPlayer_();
+
+    if (p.paused()) {
+      p.play();
     } else {
-      this.player_.pause();
+      p.pause();
     }
   }
 
   seekBack10_() {
-    this.player_.currentTime(this.player_.currentTime() - 10);
+    const p = this.getActionPlayer_();
+
+    p.currentTime(p.currentTime() - 10);
   }
 
   seekForward10_() {
-    this.player_.currentTime(this.player_.currentTime() + 10);
+    const p = this.getActionPlayer_();
+
+    p.currentTime(p.currentTime() + 10);
   }
 
   animate_() {
@@ -706,6 +768,113 @@ void main() {
 
     this.currentProjection_ = projection;
     this.defaultProjection_ = projection;
+  }
+
+  /*
+  * ----------------------------------------------------------
+  * SWY CUSTOM — expose Three.js and XR objects
+  * ----------------------------------------------------------
+  * Reason:
+  * In a shared XR scene, external systems may need access
+  * to the underlying Three.js and WebXR objects.
+  *
+  * Context:
+  * Holodeck’s shared XR scene requires access to the
+  * Three.js scene, camera, renderer, and canvas, as well
+  * as the XR controllers and raycaster.
+  *
+  * Behaviour change:
+  * Provides getter methods to retrieve the relevant
+  * Three.js and WebXR objects.
+  */
+  getThree() {
+    return {
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      renderedCanvas: this.renderedCanvas,
+      THREE
+    };
+  }
+
+  // XR related objects for external use
+  getXR() {
+    return {
+      controllers: this.controllers,
+      raycaster: this.raycaster,
+      workingMatrix: this.workingMatrix
+    };
+  }
+
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — dynamic XR video source
+   * ----------------------------------------------------------
+   * Reason:
+   * In immersive WebXR, the presenting Three.js renderer must
+   * remain active even when the underlying video source changes.
+   *
+   * Context:
+   * The host application swaps between multiple video.js players
+   * to preload and transition media. XR presentation cannot be
+   * transferred between renderers, so the video texture must be
+   * retargeted instead.
+   *
+   * Behaviour change:
+   * Allows the existing THREE.VideoTexture to reference a
+   * different <video> element at runtime without restarting
+   * the XR session or rebuilding the scene.
+   */
+  setVideoElement(videoEl) {
+    if (!videoEl || !this.videoTexture) {
+      return;
+    }
+    this.videoTexture.image = videoEl;
+    this.videoTexture.needsUpdate = true;
+  }
+
+  /**
+  * ----------------------------------------------------------
+  * SWY CUSTOM — XR raycast target management
+  * ----------------------------------------------------------
+  * Reason:
+  * The upstream plugin assumes it owns all XR raycast targets
+  * and can safely clear them globally.
+  *
+  * Context:
+  * In a shared XR scene, external systems may register their
+  * own XR-interactive meshes. Clearing all targets would
+  * incorrectly remove unrelated XR UI.
+  *
+  * Behaviour change:
+  * Specific XR raycast targets can now be removed without
+  * destroying the entire target set.
+  */
+
+  addXRRaycastTargets(meshes) {
+    if (!Array.isArray(meshes)) {
+      return;
+    }
+    this.xrRaycastTargets.push(...meshes);
+  }
+
+  removeXRRaycastTargets(meshes) {
+    if (!Array.isArray(meshes) || !this.xrRaycastTargets) {
+      return;
+    }
+    const remove = new Set(meshes);
+
+    for (let i = this.xrRaycastTargets.length - 1; i >= 0; i--) {
+      if (remove.has(this.xrRaycastTargets[i])) {
+        this.xrRaycastTargets.splice(i, 1);
+      }
+    }
+  }
+
+  clearXRRaycastTargets() {
+    if (this.xrRaycastTargets) {
+      this.xrRaycastTargets.length = 0;
+    }
   }
 
   isAndroidNativeCardboardSupport() {
@@ -1087,6 +1256,8 @@ void main() {
     this.buttonExit.position.x = -0.8;
     this.buttonExit.position.z = 0.1;
     this.buttonExit.buttonid = 'exit';
+    // SWY CUSTOM — Mark as internal VR control
+    this.buttonExit.userData.__vrInternal = true;
     this.controls.add(this.buttonExit);
 
     // Rewind 10 secs
@@ -1097,6 +1268,8 @@ void main() {
     this.buttonBack10.position.x = -0.1;
     this.buttonBack10.position.z = 0.1;
     this.buttonBack10.buttonid = 'back10';
+    // SWY CUSTOM — Mark as internal VR control
+    this.buttonBack10.userData.__vrInternal = true;
     this.controls.add(this.buttonBack10);
 
     // Play/Pause toggle
@@ -1107,6 +1280,8 @@ void main() {
     this.buttonPlayPause.position.x = 0.4;
     this.buttonPlayPause.position.z = 0.1;
     this.buttonPlayPause.buttonid = 'playpause';
+    // SWY CUSTOM — Mark as internal VR control
+    this.buttonPlayPause.userData.__vrInternal = true;
     this.controls.add(this.buttonPlayPause);
 
     // Forward 10 secs
@@ -1117,6 +1292,8 @@ void main() {
     this.buttonForward10.position.x = 0.9;
     this.buttonForward10.position.z = 0.1;
     this.buttonForward10.buttonid = 'forward10';
+    // SWY CUSTOM — Mark as internal VR control
+    this.buttonForward10.userData.__vrInternal = true;
     this.controls.add(this.buttonForward10);
 
     this.highlight = new THREE.Mesh(buttonGeometry, new THREE.MeshBasicMaterial({
@@ -1128,19 +1305,98 @@ void main() {
     this.scene.add(this.highlight);
   }
 
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — XR raycast priority inside renderController
+   * ----------------------------------------------------------
+   * Reason:
+   * The upstream plugin assumes the holodeck UI is the only
+   * interactive surface in XR and always prioritises it.
+   *
+   * Context:
+   * The host application injects additional world-space XR UI
+   * (e.g. 360 choice buttons) that must receive controller
+   * interaction before built-in holodeck controls.
+   *
+   * Behaviour change:
+   * Raycasting now prefers non-internal XR targets first and
+   * falls back to holodeck controls only if no external hit
+   * is found.
+   */
   renderController(controller) {
     if (controller.userData.selectPressed) {
       controller.children[0].scale.z = 10;
       this.workingMatrix.identity().extractRotation(controller.matrixWorld);
       this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
       this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.workingMatrix);
-      const rayTargets = this.raycaster.intersectObjects(this.holodeck.children);
+      // Raytargets in original plugin are all the children of the holodeck, and here we add additional targets
+      const rayTargets = this.raycaster.intersectObjects(
+        [...(this.xrRaycastTargets || []), ...this.holodeck.children],
+        true
+      );
 
       if (rayTargets.length > 0) {
-        rayTargets[0].object.add(this.highlight);
-        this.highlight.visible = true;
+        let hitObject = null;
+        let hitDistance = null;
+
+        // First prefer any external app hit
+        for (let i = 0; i < rayTargets.length; i++) {
+          const obj = rayTargets[i].object;
+
+          if (!obj.userData || obj.userData.__vrInternal !== true) {
+            hitObject = obj;
+            hitDistance = rayTargets[i].distance;
+            break;
+          }
+        }
+
+        // Fallback to nearest hit (holodeck)
+        if (!hitObject) {
+          hitObject = rayTargets[0].object;
+          hitDistance = rayTargets[0].distance;
+        }
+
+        const hit = hitObject;
+
+        // Check if the hit object is an internal vr control
+        if (hit.userData && hit.userData.__vrInternal) {
+          hit.add(this.highlight);
+          this.highlight.visible = true;
+        }
+
         if (controller.userData.selectPressed) {
-          switch (rayTargets[0].object.buttonid) {
+
+          // ------------------------------------------------------------
+          // Allow external interactive targets.
+          //
+          // Any hit object that is not marked as an internal videojs-vr
+          // control is treated as an application-defined interactive
+          // element. Forward the interaction and exit early so built-in
+          // holodeck controls are not triggered.
+          // ------------------------------------------------------------
+          // External interactive target selected.
+          // Emit a generic XR selection event and let the host app decide what it means.
+          if (!hit.userData || !hit.userData.__vrInternal) {
+            this.highlight.visible = false;
+
+            this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-xr-select', {
+              bubbles: true,
+              detail: {
+                hit: {
+                  object: hit
+                },
+                controller
+              }
+            }));
+
+            controller.userData.selectPressed = false;
+            return;
+          }
+
+          // ------------------------------------------------------------
+          // Built-in videojs-vr holodeck controls
+          // ------------------------------------------------------------
+          switch (hit.buttonid) {
           case 'playpause':
             this.togglePlay_();
             break;
@@ -1165,22 +1421,59 @@ void main() {
             }
             break;
           }
+
           controller.userData.selectPressed = false;
         }
-        controller.children[0].scale.z = rayTargets[0].distance;
+
+        controller.children[0].scale.z = hitDistance;
       } else {
         this.highlight.visible = false;
       }
+
     }
   }
 
+  /**
+   * ----------------------------------------------------------
+   * SWY CUSTOM — WebXR session lifecycle forwarding
+   * ----------------------------------------------------------
+   * Reason:
+   * WebXR session ownership lives on the Three.js renderer, not
+   * on any specific UI control or video.js player instance.
+   *
+   * Context:
+   * XR may be entered via browser UI (e.g. Quest “Enter VR”),
+   * programmatic calls, or plugin controls. The host application
+   * must be notified when immersive XR presentation actually
+   * begins and ends so it can coordinate XR-aware systems.
+   *
+   * Behaviour change:
+   * The renderer-level XR session lifecycle is forwarded to the
+   * host application via explicit start/end events. This does
+   * not alter XR behaviour; it only exposes authoritative XR
+   * state.
+   */
   initImmersiveVR() {
     this.renderer.xr.enabled = true;
+
+    if (!this._xrLifecycleForwarded) {
+      this.renderer.xr.addEventListener('sessionstart', () => {
+        this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-start', { bubbles: true }));
+      });
+
+      this.renderer.xr.addEventListener('sessionend', () => {
+        this.player_.el().dispatchEvent(new CustomEvent('videojs-vr-session-end', { bubbles: true }));
+      });
+
+      this._xrLifecycleForwarded = true;
+    }
+
     this.renderer.xr.setReferenceSpaceType('local');
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setAnimationLoop(this.render.bind(this));
 
     this.raycaster = new THREE.Raycaster();
+    this.xrRaycastTargets = [];
     this.workingMatrix = new THREE.Matrix4();
     this.workingVector = new THREE.Vector3();
 
